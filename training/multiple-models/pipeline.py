@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from pipeline_elements import *
 from data_overhead import *
 from make_pipeline import *
-from data_prep import prepare_datasets, SOURCE_COLUMN
+from data_prep import prepare_datasets, plot_line_of_fit, SOURCE_COLUMN
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = BASE_DIR / "data"
@@ -39,9 +39,6 @@ def do_fit(my_args):
         raise Exception("training data file: {} does not exist.".format(train_file))
 
     X, y = load_data(my_args, train_file)
-    print("Training feature columns:")
-    print(list(X.columns))
-    
     pipeline = make_fit_pipeline(my_args)
     pipeline.fit(X, y)
 
@@ -63,32 +60,11 @@ def do_cross(my_args):
     
     pipeline = make_fit_pipeline(my_args)
 
-    scoring = ("accuracy", "precision_weighted", "recall_weighted", "f1_weighted")
-    cv_results = sklearn.model_selection.cross_validate(
-        pipeline,
-        X,
-        y,
-        cv=my_args.cv_count,
-        n_jobs=-1,
-        verbose=3,
-        scoring=scoring,
-    )
-    print("Accuracy:", cv_results["test_accuracy"], cv_results["test_accuracy"].mean())
-    print(
-        "Precision(weighted):",
-        cv_results["test_precision_weighted"],
-        cv_results["test_precision_weighted"].mean(),
-    )
-    print(
-        "Recall(weighted):",
-        cv_results["test_recall_weighted"],
-        cv_results["test_recall_weighted"].mean(),
-    )
-    print(
-        "F1(weighted):",
-        cv_results["test_f1_weighted"],
-        cv_results["test_f1_weighted"].mean(),
-    )
+    cv_results = sklearn.model_selection.cross_validate(pipeline, X, y, cv=my_args.cv_count, n_jobs=-1, verbose=3, scoring=('r2', 'neg_mean_squared_error', 'neg_mean_absolute_error'),)
+    # print(cv_results.keys())
+    print("R2:", cv_results['test_r2'], cv_results['test_r2'].mean())
+    print("MSE:", cv_results['test_neg_mean_squared_error'], cv_results['test_neg_mean_squared_error'].mean())
+    print("MAE:", cv_results['test_neg_mean_absolute_error'], cv_results['test_neg_mean_absolute_error'].mean())
 
     # pipeline.fit(X, y)
     # model_file = get_model_filename(my_args.model_file, train_file)
@@ -192,8 +168,7 @@ def do_predict(my_args):
     if not os.path.exists(test_file):
         raise Exception("testing data file: {} does not exist.".format(test_file))
 
-    model_source_file = my_args.train_file if my_args.train_file else test_file
-    model_file = get_model_filename(my_args.model_file, model_source_file)
+    model_file = get_model_filename(my_args.model_file, test_file)
     if not os.path.exists(model_file):
         raise Exception("Model file, '{}', does not exist.".format(model_file))
 
@@ -217,8 +192,7 @@ def do_proba(my_args):
     if not os.path.exists(test_file):
         raise Exception("testing data file: {} does not exist.".format(test_file))
 
-    model_source_file = my_args.train_file if my_args.train_file else test_file
-    model_file = get_model_filename(my_args.model_file, model_source_file)
+    model_file = get_model_filename(my_args.model_file, test_file)
     if not os.path.exists(model_file):
         raise Exception("Model file, '{}', does not exist.".format(model_file))
 
@@ -315,45 +289,14 @@ def do_cross_score(my_args):
     if not os.path.exists(train_file):
         raise Exception("training data file: {} does not exist.".format(train_file))
 
-    data = get_data(train_file)
-    feature_columns, label_column = get_feature_and_label_names(my_args, data)
-    if label_column not in data.columns:
-        raise Exception("label column '{}' is not in training data.".format(my_args.label))
-
-    groups = None
-    cv = my_args.cv_count
-    if my_args.group_column:
-        if my_args.group_column not in data.columns:
-            raise Exception(
-                "group column '{}' is not in training data.".format(my_args.group_column)
-            )
-        groups = data[my_args.group_column]
-        cv = sklearn.model_selection.GroupKFold(n_splits=my_args.cv_count)
-        feature_columns = [c for c in feature_columns if c != my_args.group_column]
-        print(
-            "Using GroupKFold on '{}' with {} unique groups.".format(
-                my_args.group_column,
-                groups.nunique(),
-            )
-        )
-
-    X = data[feature_columns]
-    y = data[label_column]
+    X, y = load_data(my_args, train_file)
     
     pipeline = make_fit_pipeline(my_args)
 
     # scoring="accuracy" is a classification metric.
     # scoring="r2" is a regression metric.
     # https://scikit-learn.org/stable/modules/model_evaluation.html#scoring-parameter
-    score = sklearn.model_selection.cross_val_score(
-        pipeline,
-        X,
-        y,
-        cv=cv,
-        groups=groups,
-        n_jobs=-1,
-        scoring="accuracy",
-    )
+    score = sklearn.model_selection.cross_val_score(pipeline, X, y, cv=my_args.cv_count, n_jobs=-1, scoring="accuracy")
     print("Cross Validation Score: {:.3f} : {}".format(score.mean(), ["{:.3f}".format(x) for x in score]))
 
     return
@@ -598,24 +541,11 @@ def prepare_data_action(my_args):
         raise Exception(f"Raw data directory '{data_dir}' does not exist.")
 
     combined_output = Path(my_args.combined_file).expanduser() if my_args.combined_file else None
-    window_output_path = Path(my_args.train_file or "X_train.csv").expanduser()
+    window_output_path = Path(my_args.train_file or "windowed_train.csv").expanduser()
     if my_args.window_test_file:
         window_test_path = Path(my_args.window_test_file).expanduser()
     else:
         window_test_path = Path(get_test_filename("", str(window_output_path)))
-
-    def derive_y_path(x_path: Path, configured_y_path: str) -> Path:
-        if configured_y_path:
-            return Path(configured_y_path).expanduser()
-        stem = x_path.stem
-        if stem.startswith("X_"):
-            y_stem = "y_" + stem[2:]
-        else:
-            y_stem = stem + "_y"
-        return x_path.with_name(y_stem + x_path.suffix)
-
-    y_train_path = derive_y_path(window_output_path, my_args.y_train_file)
-    y_test_path = derive_y_path(window_test_path, my_args.y_test_file)
 
     _, window_df = prepare_datasets(
         data_dir=data_dir,
@@ -637,45 +567,43 @@ def prepare_data_action(my_args):
         stratify=stratify_labels,
     )
 
-    # Do not train on provenance/window bookkeeping columns.
-    # Keep the activity label plus aggregated sensor features.
-    metadata_columns = [
-        "participant",
-        "window_index",
-        "window_start_time",
-        "window_end_time",
-        "source_file",
-    ]
-    train_df = train_df.drop(columns=metadata_columns, errors="ignore")
-    test_df = test_df.drop(columns=metadata_columns, errors="ignore")
-
-    if my_args.label not in train_df.columns or my_args.label not in test_df.columns:
-        raise Exception(f"Label column '{my_args.label}' was not found after data preparation.")
-
-    y_train = train_df[my_args.label].copy()
-    y_test = test_df[my_args.label].copy()
-
     window_output_path.parent.mkdir(parents=True, exist_ok=True)
     train_df.to_csv(window_output_path, index=False)
 
     window_test_path.parent.mkdir(parents=True, exist_ok=True)
     test_df.to_csv(window_test_path, index=False)
 
-    y_train_path.parent.mkdir(parents=True, exist_ok=True)
-    y_train.to_csv(y_train_path, index=False)
-
-    y_test_path.parent.mkdir(parents=True, exist_ok=True)
-    y_test.to_csv(y_test_path, index=False)
-
     print(
         f"Prepared {len(train_df)} train windows and {len(test_df)} test windows across {window_df[SOURCE_COLUMN].nunique()} sessions."
     )
     print(f"Train windows saved to {window_output_path}")
     print(f"Test windows saved to {window_test_path}")
-    print(f"y_train saved to {y_train_path}")
-    print(f"y_test saved to {y_test_path}")
 
-   
+    window_df_for_plot = train_df if len(train_df) else window_df
+
+    feature = my_args.line_fit_feature
+    if feature not in window_df_for_plot.columns:
+        fallback_feature = "accel_mag_mean"
+        print(
+            f"Feature '{feature}' not found. Falling back to '{fallback_feature}' for line-of-fit plot."
+        )
+        feature = fallback_feature
+        if feature not in window_df_for_plot.columns:
+            raise Exception(
+                f"Neither '{my_args.line_fit_feature}' nor '{fallback_feature}' exist in the prepared dataset."
+            )
+
+    image_path = Path(my_args.image_file).expanduser()
+    slope, intercept = plot_line_of_fit(
+        window_df_for_plot,
+        feature_column=feature,
+        image_file=image_path,
+        title=f"{feature} line of fit",
+    )
+    print(
+        f"Saved line-of-fit plot for '{feature}' to {image_path} (slope={slope:.4f}, intercept={intercept:.4f})"
+    )
+
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog=argv[0], description='Fit Data Using Pipeline',
@@ -697,21 +625,19 @@ def parse_args(argv):
     parser.add_argument('--use-scaler',    '-s', default=0,         type=int,   help="0 = don't use scaler, 1 = do use scaler (default=0)")
     parser.add_argument('--categorical-missing-strategy', default="",   type=str, choices=("", "most_frequent"), help="strategy for missing categorical information")
     parser.add_argument('--numerical-missing-strategy', default="",   type=str,  choices=("", "mean", "median", "most_frequent"), help="strategy for missing numerical information")
-    parser.add_argument('--show-test',     '-S', default=1,         type=int,   help="0 = don't show test loss, 1 = do show test loss (default=0)")
+    parser.add_argument('--show-test',     '-S', default=0,         type=int,   help="0 = don't show test loss, 1 = do show test loss (default=0)")
     parser.add_argument('--n-search-iterations', default=10,        type=int,   help="number of random iterations in randomized grid search.")
     parser.add_argument('--cv-count',            default=3,         type=int,   help="number of partitions for cross validation.")
-    parser.add_argument('--group-column',        default="",        type=str,   help="column used for grouped cross validation (e.g., participant_id)")
     parser.add_argument('--raw-data-dir',        default=str(DEFAULT_DATA_DIR), type=str,   help="Directory containing minute-long activity CSVs for prepare-data action")
     parser.add_argument('--combined-file',       default="combined_raw.csv", type=str,   help="Output CSV for concatenated raw data when running prepare-data (set to '' to skip)")
     parser.add_argument('--window-seconds',      default=2.0,       type=float, help="Sliding window size in seconds for prepare-data")
     parser.add_argument('--sampling-rate',       default=50.0,      type=float, help="Sampling rate (Hz) used to convert seconds to samples")
     parser.add_argument('--window-overlap',      default=0.5,       type=float, help="Fractional overlap between consecutive windows [0, 1)")
     parser.add_argument('--window-test-file',    default="",       type=str,   help="Output CSV for the windowed test split (default derives from train file)")
-    parser.add_argument('--y-train-file',        default="",       type=str,   help="Output CSV for y_train labels (default derives from --train-file)")
-    parser.add_argument('--y-test-file',         default="",       type=str,   help="Output CSV for y_test labels (default derives from --window-test-file/--train-file)")
     parser.add_argument('--window-test-size',    default=0.2,       type=float, help="Proportion of windowed data reserved for testing")
     parser.add_argument('--window-random-state', default=42,        type=int,   help="Random seed used when splitting windowed data")
     parser.add_argument('--image-file',          default="image.png", type=str,   help="name of file to store output images")
+    parser.add_argument('--line-fit-feature',    default="accel_mag_mean", type=str, help="Feature column to visualize with the line of fit plot")
     parser.add_argument('--cross-val-predict-method', default="", type=str,   help="method argument for cross_val_predict, will be determined by model-type")
 
     my_args = parser.parse_args(argv[1:])

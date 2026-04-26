@@ -19,8 +19,6 @@ IMU_COLUMNS: Tuple[str, ...] = (
 )
 LABEL_COLUMN = "activity"
 SOURCE_COLUMN = "source_file"
-PARTICIPANT_COLUMN = "participant"
-PARTICIPANT_ID_COLUMN = "participant_id"
 TIME_SECONDS_COLUMN = "time_seconds"
 
 __all__ = [
@@ -30,8 +28,6 @@ __all__ = [
     "plot_line_of_fit",
     "LABEL_COLUMN",
     "SOURCE_COLUMN",
-    "PARTICIPANT_COLUMN",
-    "PARTICIPANT_ID_COLUMN",
 ]
 
 
@@ -39,15 +35,6 @@ def infer_label_from_filename(path: Path) -> str:
     """Infer activity label from filename prefix (e.g., running-gisela-01.csv -> running)."""
 
     return path.stem.split("-")[0].lower()
-
-
-def infer_participant_from_filename(path: Path) -> str:
-    """Infer participant from filename (e.g., running-gisela-01.csv -> gisela)."""
-
-    parts = path.stem.split("-")
-    if len(parts) < 2:
-        raise ValueError(f"Filename '{path.name}' does not include a participant segment.")
-    return parts[1].lower()
 
 
 def _resolve_time_seconds(df: pd.DataFrame) -> pd.Series:
@@ -67,24 +54,10 @@ def _load_activity_file(path: Path) -> pd.DataFrame:
 
     df = df.copy()
     df[LABEL_COLUMN] = infer_label_from_filename(path)
-    df[PARTICIPANT_COLUMN] = infer_participant_from_filename(path)
     df[SOURCE_COLUMN] = path.name
     df[TIME_SECONDS_COLUMN] = _resolve_time_seconds(df)
     df = df.sort_values(TIME_SECONDS_COLUMN).reset_index(drop=True)
     return df
-
-
-def _attach_participant_ids(df: pd.DataFrame) -> pd.DataFrame:
-    """Add a stable integer participant id based on sorted participant names."""
-
-    participants = sorted(df[PARTICIPANT_COLUMN].dropna().astype(str).str.lower().unique())
-    participant_codes = pd.Categorical(
-        df[PARTICIPANT_COLUMN].astype(str).str.lower(),
-        categories=participants,
-    ).codes
-    out = df.copy()
-    out[PARTICIPANT_ID_COLUMN] = participant_codes + 1
-    return out
 
 
 def combine_activity_files(data_dir: Path) -> pd.DataFrame:
@@ -98,8 +71,7 @@ def combine_activity_files(data_dir: Path) -> pd.DataFrame:
     if not frames:
         raise RuntimeError(f"No CSV files found in {data_dir}")
 
-    combined_df = pd.concat(frames, ignore_index=True)
-    return _attach_participant_ids(combined_df)
+    return pd.concat(frames, ignore_index=True)
 
 
 def _sliding_window_indices(length: int, window_size: int, step: int) -> Iterable[Tuple[int, int]]:
@@ -109,12 +81,10 @@ def _sliding_window_indices(length: int, window_size: int, step: int) -> Iterabl
 
 def _summarize_window(df_window: pd.DataFrame, window_id: int) -> dict:
     features = {
-        PARTICIPANT_ID_COLUMN: int(df_window[PARTICIPANT_ID_COLUMN].iloc[0]),
         "window_index": window_id,
         "window_start_time": float(df_window[TIME_SECONDS_COLUMN].iloc[0]),
         "window_end_time": float(df_window[TIME_SECONDS_COLUMN].iloc[-1]),
         LABEL_COLUMN: df_window[LABEL_COLUMN].iloc[0],
-        # PARTICIPANT_COLUMN: df_window[PARTICIPANT_COLUMN].iloc[0],
         SOURCE_COLUMN: df_window[SOURCE_COLUMN].iloc[0],
     }
 
@@ -217,3 +187,35 @@ def prepare_datasets(
 
     return combined_df, window_df
 
+
+def plot_line_of_fit(
+    window_df: pd.DataFrame,
+    *,
+    feature_column: str,
+    image_file: Path,
+    title: str | None = None,
+) -> Tuple[float, float]:
+    """Plot feature values with a least-squares best-fit line and save to disk."""
+
+    if feature_column not in window_df.columns:
+        raise ValueError(f"Feature '{feature_column}' not found in dataset columns")
+
+    y = window_df[feature_column].astype(float).values
+    x = np.arange(len(y))
+    slope, intercept = np.polyfit(x, y, 1)
+    trend_line = slope * x + intercept
+
+    plt.figure(figsize=(10, 5))
+    plt.scatter(x, y, s=14, alpha=0.6, label=feature_column)
+    plt.plot(x, trend_line, color="red", linewidth=2, label="Line of fit")
+    plt.xlabel("Window index")
+    plt.ylabel(feature_column)
+    plt.title(title or f"{feature_column} trend")
+    plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.5)
+    plt.legend()
+    image_file.parent.mkdir(parents=True, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(image_file)
+    plt.close()
+
+    return slope, intercept

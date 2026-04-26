@@ -10,19 +10,10 @@ import pandas as pd
 import os.path
 import logging
 
-AUTO_EXCLUDED_FEATURE_COLUMNS = {
-    "participant",
-    "participant_id",
-    "window_index",
-    "window_start_time",
-    "window_end_time",
-    "source_file",
-}
-
 def get_test_filename(test_file, filename):
     if test_file == "":
         basename = get_basename(filename)
-        test_file = "{}_test.csv".format(basename)
+        test_file = "{}-test.csv".format(basename)
     return test_file
 
 def get_basename(filename):
@@ -30,7 +21,7 @@ def get_basename(filename):
     dirname, basename = os.path.split(root)
     logging.info("root: {}  ext: {}  dirname: {}  basename: {}".format(root, ext, dirname, basename))
 
-    stub = "_train"
+    stub = "-train"
     if basename[len(basename)-len(stub):] == stub:
         basename = basename[:len(basename)-len(stub)]
 
@@ -88,7 +79,7 @@ def get_feature_and_label_names(my_args, data):
     # no features specified, so add all non-labels
     if len(features) == 0:
         for feature_column in data.columns:
-            if feature_column != label and feature_column not in AUTO_EXCLUDED_FEATURE_COLUMNS:
+            if feature_column != label:
                 features.append(feature_column)
 
     return features, label
