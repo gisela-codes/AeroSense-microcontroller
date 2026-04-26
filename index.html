@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>BLE</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+
+        .line {
+            fill: none;
+            stroke-width: 2px;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges;
+        }
+
+        .chart-title {
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .legend {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        .legend-item {
+            margin: 5px 0;
+        }
+
+        .legend-color {
+            display: inline-block;
+            width: 20px;
+            height: 2px;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+    </style>
+  </head>
+  <body>
+    <div id="container">
+        <div>
+                <p>
+                    <button id="connect">Connect</button>
+                    <button id="downloadCSV">Save CSV</button>
+                </p>
+        </div>  
+        <div id="chart"></div>
+        <div id="legend" class="legend"></div>  
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="axis.js"></script>
+  </body>
+</html>
