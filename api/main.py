@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field, model_validator
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-MODEL_SUPPORT_DIR = BASE_DIR / "multiple-models"
-MODEL_PATH = BASE_DIR / "boost-model.joblib"
+TRAINING_DIR = BASE_DIR / "training"
+MODEL_SUPPORT_DIR = TRAINING_DIR / "multiple-models"
+MODEL_PATH = TRAINING_DIR / "boost-model.joblib"
 WINDOW_SIZE = 100
 WINDOW_STEP = 50
 
