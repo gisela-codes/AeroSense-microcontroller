@@ -625,7 +625,7 @@ def parse_args(argv):
     parser.add_argument('--use-scaler',    '-s', default=0,         type=int,   help="0 = don't use scaler, 1 = do use scaler (default=0)")
     parser.add_argument('--categorical-missing-strategy', default="",   type=str, choices=("", "most_frequent"), help="strategy for missing categorical information")
     parser.add_argument('--numerical-missing-strategy', default="",   type=str,  choices=("", "mean", "median", "most_frequent"), help="strategy for missing numerical information")
-    parser.add_argument('--show-test',     '-S', default=0,         type=int,   help="0 = don't show test loss, 1 = do show test loss (default=0)")
+    parser.add_argument('--show-test',     '-S', default=1,         type=int,   help="0 = don't show test loss, 1 = do show test loss (default=0)")
     parser.add_argument('--n-search-iterations', default=10,        type=int,   help="number of random iterations in randomized grid search.")
     parser.add_argument('--cv-count',            default=3,         type=int,   help="number of partitions for cross validation.")
     parser.add_argument('--raw-data-dir',        default=str(DEFAULT_DATA_DIR), type=str,   help="Directory containing minute-long activity CSVs for prepare-data action")

@@ -106,14 +106,13 @@ void calibrateAirZero() {
 void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
-
+  delay(2000);
   Serial.begin(115200);
-  while (!Serial) delay(10);
   delay(2000);
 
   Serial.println("\nBOOT");
   Serial.println("Starting setup...");
-
+  seq = 0;
   Wire.begin();
   Wire.setClock(100000);
   delay(100);
@@ -206,10 +205,10 @@ void loop() {
   }
 
   // Debug
-  Serial.print("seq: "); Serial.print(pkt.seq);
-  Serial.print(" | Pa: "); Serial.print(pa, 2);
-  Serial.print(" | raw: "); Serial.print(airRaw);
-  Serial.print(" | zero: "); Serial.print(airZero);
+  // Serial.print("seq: "); Serial.print(pkt.seq);
+  // Serial.print(" | Pa: "); Serial.print(pa, 2);
+  // Serial.print(" | raw: "); Serial.print(airRaw);
+  // Serial.print(" | zero: "); Serial.print(airZero);
   // Serial.print(" | connected: "); Serial.println(deviceConnected ? "yes" : "no");
   // Serial.print("seq: "); Serial.print(pkt.seq);
   // Serial.print(" | air: "); Serial.print(pkt.air);
