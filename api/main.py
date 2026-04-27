@@ -186,17 +186,15 @@ def _window_request_from_buffer(buffer: DeviceBuffer) -> SensorWindowRequest:
 def _predict_from_window(model, payload: SensorWindowRequest) -> dict[str, object]:
     feature_frame = _build_feature_frame(payload)
     prediction = model.predict(feature_frame)[0]
-    response = {
-        "prediction": str(prediction),
-        "features": feature_frame.iloc[0].to_dict(),
-        "sample_count": len(payload.ax),
+    response: dict[str, object] = {
+        "label": str(prediction),
+        "confidence": None,
     }
     if hasattr(model, "predict_proba"):
         probabilities = model.predict_proba(feature_frame)[0]
         classes = [str(label) for label in model.classes_]
-        response["probabilities"] = {
-            label: float(prob) for label, prob in zip(classes, probabilities)
-        }
+        probability_map = {label: float(prob) for label, prob in zip(classes, probabilities)}
+        response["confidence"] = probability_map.get(str(prediction))
     return response
 
 
@@ -249,12 +247,12 @@ def stream(payload: StreamRequest) -> dict[str, object]:
         "window_size": WINDOW_SIZE,
         "step_size": WINDOW_STEP,
         "ready": buffer.is_ready(),
+        "prediction_ready": False,
         "prediction": None,
+        "samples_needed": max(0, WINDOW_SIZE - buffer.sample_count()),
+        "last_sequence_number": buffer.last_sequence_number,
+        "sequence_warning": sequence_warning,
     }
-    if buffer.last_sequence_number is not None:
-        response["last_sequence_number"] = buffer.last_sequence_number
-    if sequence_warning is not None:
-        response["sequence_warning"] = sequence_warning
 
     if buffer.should_predict():
         try:
@@ -264,11 +262,5 @@ def stream(payload: StreamRequest) -> dict[str, object]:
         buffer.mark_predicted()
         response["prediction"] = prediction
         response["prediction_ready"] = True
-    else:
-        response["prediction_ready"] = False
-        if not buffer.is_ready():
-            response["samples_needed"] = WINDOW_SIZE - buffer.sample_count()
-        else:
-            response["samples_until_next_prediction"] = WINDOW_STEP - buffer.samples_since_prediction
 
     return response
